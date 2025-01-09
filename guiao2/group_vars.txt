@@ -1,0 +1,18 @@
+ansible.cfg  docker-swap-install.yml  group_vars  hosts  roles
+vagrant@myvm:~/AppDeveloper$ cd group_vars/
+vagrant@myvm:~/AppDeveloper/group_vars$ ls
+all.yml
+vagrant@myvm:~/AppDeveloper/group_vars$ cat all.yml
+
+
+# Database configurations
+db_network: dnet
+db_host: swap-db
+db_image: mysql:latest
+db_name: swap
+db_username: swap_user
+db_password: swap_secret
+swap_image: swapimage
+swap_host: swap-serv
+db_port: "3306"
+db_connection: mysql

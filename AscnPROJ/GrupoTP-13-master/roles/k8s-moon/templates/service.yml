@@ -1,0 +1,22 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ moonshot_host }}"
+  labels:
+    app: moonshot
+    tier: app
+  namespace: default
+spec:
+  type: LoadBalancer
+  selector:
+    app: moonshot
+  ports:
+    - name: http
+      protocol: TCP
+      targetPort: 8000
+      port: 80
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 7200

@@ -1,0 +1,61 @@
+- name: Include Elk group variables
+  ansible.builtin.include_vars: "group_vars/elk.yml"
+
+- name: Block for installing Metricbeat
+  block:
+    - name: Install Metricbeat
+      ansible.builtin.apt:
+        name: metricbeat
+        state: present
+      become: true
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
+      become: true
+
+    - name: Copy Metricbeat (template) configuration file
+      ansible.builtin.template:
+        src: metricbeat.yml.j2
+        dest: /etc/metricbeat/metricbeat.yml
+        owner: root
+        group: root
+        mode: '0644'
+      become: true
+
+    - name: Enable Metricbeat service
+      ansible.builtin.systemd:
+        name: metricbeat.service
+        enabled: true
+        state: stopped
+      become: true
+
+- name: Setup metricbeat dashboards
+  ansible.builtin.command: metricbeat setup -e
+  become: true
+  run_once: true
+
+- name: Set total_fields.limit for metricbeat indices
+  ansible.builtin.uri:
+    url: "http://{{ monitor_ip }}:{{ elasticsearch_port }}/metricbeat*/_settings"
+    method: PUT
+    headers:
+      Content-Type: "application/json"
+    body: |
+      {
+        "index.mapping.total_fields.limit": 20000
+      }
+    body_format: json
+  register: result
+  run_once: true
+
+- name: Debug response
+  ansible.builtin.debug:
+    var: result
+
+- name: Start metricbeat
+  ansible.builtin.systemd:
+    name: metricbeat.service
+    enabled: true
+    state: started
+  become: true

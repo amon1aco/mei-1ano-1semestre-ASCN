@@ -1,0 +1,62 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+  labels:
+    app: postgres
+    tier: database
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: postgres
+        tier: database
+    spec:
+      containers:
+        - name: postgres
+          image: "{{ db_image }}"
+          env: # The variables below could be set on a ConfigMap object
+            - name: POSTGRES_DB
+              #value: "{{ db_name }}"
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_NAME
+            
+            - name: POSTGRES_USER
+              #value: "{{ db_username }}"
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_USER
+            
+            - name: POSTGRES_PASSWORD
+              #value: "{{ db_password }}"
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_PASSWORD
+            
+            - name: POSTGRES_HOST_AUTH_METHOD
+              #value: "{{ db_trust }}"
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_TRUST
+
+          ports:
+            - containerPort: 5432 # porta default do postgress
+          volumeMounts:
+            - name: postgres-persistent-storage
+              mountPath: /var/lib/postgres
+      volumes:
+        - name: postgres-persistent-storage
+          persistentVolumeClaim:
+            claimName: "{{ pvc_name }}"

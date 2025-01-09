@@ -1,0 +1,132 @@
+---
+- name: Ensure facts are gathered
+  ansible.builtin.setup:
+
+- name: Install Java if not already installed (RedHat-based)
+  ansible.builtin.yum:
+    name: java-11-openjdk
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Install Java if not already installed (Debian-based)
+  ansible.builtin.apt:
+    name: openjdk-11-jdk
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Install PrettyTable via system package manager (Debian-based)
+  ansible.builtin.apt:
+    name: python3-prettytable
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install PrettyTable via system package manager (RedHat-based)
+  ansible.builtin.yum:
+    name: python3-prettytable
+    state: present
+  when: ansible_os_family == "RedHat"
+
+
+- name: Create directory for JMeter
+  ansible.builtin.file:
+    path: /opt/apache-jmeter
+    state: directory
+    mode: '0755'
+
+- name: Download Apache JMeter
+  ansible.builtin.get_url:
+    url: "https://downloads.apache.org//jmeter/binaries/apache-jmeter-5.6.3.tgz"
+    dest: /opt/apache-jmeter/apache-jmeter-5.6.3.tgz
+
+- name: Extract Apache JMeter
+  ansible.builtin.unarchive:
+    src: /opt/apache-jmeter/apache-jmeter-5.6.3.tgz
+    dest: /opt/apache-jmeter/
+    remote_src: yes
+
+- name: Add JMeter to PATH
+  ansible.builtin.lineinfile:
+    path: /etc/profile.d/jmeter.sh
+    line: "export PATH=/opt/apache-jmeter/apache-jmeter-5.6.3/bin:$PATH"
+    create: yes
+    mode: '0755'
+
+- name: Source JMeter PATH
+  ansible.builtin.shell: source /etc/profile.d/jmeter.sh
+  args:
+    executable: /bin/bash
+
+- name: Ensure results directory exists
+  ansible.builtin.file:
+    path: results
+    state: directory
+    mode: '0755'
+
+- name: Remove old results file if it exists
+  ansible.builtin.file:
+    path: /opt/apache-jmeter/apache-jmeter-5.6.3/bin/results.jtl
+    state: absent
+
+- name: Upload JMeter test plan
+  ansible.builtin.copy:
+    src: jmx_files/testetp2.jmx
+    dest: /opt/apache-jmeter/apache-jmeter-5.6.3/bin/test_plan.jmx
+
+- name: Update app_ip in test plan
+  ansible.builtin.replace:
+    path: /opt/apache-jmeter/apache-jmeter-5.6.3/bin/test_plan.jmx
+    regexp: '(?<=<stringProp name="HTTPSampler.domain">)[^<]+'
+    replace: '{{ app_ip }}'
+
+- name: Update app_port in test plan
+  ansible.builtin.replace:
+    path: /opt/apache-jmeter/apache-jmeter-5.6.3/bin/test_plan.jmx
+    regexp: '(?<=<stringProp name="HTTPSampler.port">)[^<]+'
+    replace: '{{ app_port }}'
+
+
+- name: Update number of threads in test plan
+  ansible.builtin.replace:
+    path: /opt/apache-jmeter/apache-jmeter-5.6.3/bin/test_plan.jmx
+    regexp: '(?<=<intProp name="ThreadGroup.num_threads">)[^<]+'
+    replace: '{{ num_threads }}'
+
+- name: Update number of iterations in test plan
+  ansible.builtin.replace:
+    path: /opt/apache-jmeter/apache-jmeter-5.6.3/bin/test_plan.jmx
+    regexp: '(?<=<stringProp name="LoopController.loops">)[^<]+'
+    replace: '{{ num_iterations }}'
+
+
+- name: Run JMeter test
+  ansible.builtin.command:
+    cmd: >
+      /opt/apache-jmeter/apache-jmeter-5.6.3/bin/jmeter -n
+      -t /opt/apache-jmeter/apache-jmeter-5.6.3/bin/test_plan.jmx
+      -l /opt/apache-jmeter/apache-jmeter-5.6.3/bin/results.jtl
+  register: jmeter_result
+
+- name: Copy results to playbook results directory
+  ansible.builtin.copy:
+    src: /opt/apache-jmeter/apache-jmeter-5.6.3/bin/results.jtl
+    dest: results/results.jtl
+    remote_src: yes
+
+- name: Upload Python script to process results
+  ansible.builtin.copy:
+    src: scripts_python/process_results.py
+    dest: results/process_results.py
+
+- name: Analyze JMeter results
+  ansible.builtin.command:
+    cmd: python3 results/process_results.py results/results.jtl
+  register: analysis_result
+
+- name: Display test results
+  ansible.builtin.debug:
+    msg: "{{ analysis_result.stdout }}"
+
+
+
+

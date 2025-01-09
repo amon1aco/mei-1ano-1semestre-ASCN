@@ -1,0 +1,60 @@
+- name: Install Elasticsearch and Kibana
+  ansible.builtin.apt:
+    name:
+      - elasticsearch
+      - kibana
+    state: present
+  become: true
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
+- name: Copy elasticsearch (template) configuration file
+  ansible.builtin.template:
+    src: elasticsearch.yml.j2
+    dest: /etc/elasticsearch/elasticsearch.yml
+    owner: root
+    group: root
+    mode: '0664'
+  become: true
+
+- name: Enable Elasticsearch service
+  ansible.builtin.systemd:
+    name: elasticsearch.service
+    enabled: true
+    state: started
+  become: true
+
+- name: Wait until Elasticsearch is ready
+  ansible.builtin.uri:
+    url: "http://{{ monitor_ip }}:{{ elasticsearch_port }}"
+    status_code: 200
+    timeout: 60
+  delay: 10
+  retries: 6
+
+- name: Copy kibana (template) configuration file
+  ansible.builtin.template:
+    src: kibana.yml.j2
+    dest: /etc/kibana/kibana.yml
+    owner: root
+    group: root
+    mode: '0664'
+  become: true
+
+- name: Enable Kibana service
+  ansible.builtin.systemd:
+    name: kibana.service
+    enabled: true
+    state: started
+  become: true
+
+- name: Wait until Kibana is ready
+  ansible.builtin.uri:
+    url: "http://{{ monitor_ip }}:{{ kibana_port }}"
+    status_code: 200
+    timeout: 60
+  delay: 10
+  retries: 6

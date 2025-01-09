@@ -1,0 +1,4 @@
+docker_build_dir: /tmp/swap
+# swap_image: swap:latest
+swap_image: ascnuminho/swap:u24
+swap_container: swap

@@ -1,0 +1,7 @@
+# Database configurations
+db_host: moonshot
+db_image: "postgres:15.4"
+db_name: moonshot
+db_username: admin
+db_password: password
+db_trust: "trust"

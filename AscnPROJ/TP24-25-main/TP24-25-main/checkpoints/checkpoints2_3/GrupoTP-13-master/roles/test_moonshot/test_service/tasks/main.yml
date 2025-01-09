@@ -1,0 +1,19 @@
+---
+- name: Refresh inventory
+  ansible.builtin.meta: refresh_inventory
+
+- name: Task 0 - Check access to App (HTTP GET should return {{ result_code }})
+  ansible.builtin.uri:
+    url: "http://{{ app_ip }}:{{ app_port }}/api/health"
+    method: GET
+    status_code: 200
+  register: result
+  until: result.status == result_code
+  retries: 15
+  delay: 10
+  ignore_errors: true
+
+- name: "Skip the rest of the tasks if result.status != {{ result_code }}"
+  ansible.builtin.fail:
+    msg: "Task 0 failed, skipping the rest of the tasks"
+  when: result.status != result_code

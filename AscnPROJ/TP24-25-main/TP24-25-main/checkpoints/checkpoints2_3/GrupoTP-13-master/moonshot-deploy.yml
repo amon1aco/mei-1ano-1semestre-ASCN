@@ -1,0 +1,104 @@
+---
+# Playbook to deploy Moonshot Application
+- name: Deploy Moonshot Application on Kubernetes
+  hosts: localhost
+  become: true # Ensures root privileges where needed
+
+  vars:
+    # Docker variables
+    docker_image_name: moonshot_image
+    docker_container_name: moonshot_container
+    app_port: 8000
+
+    # Kubernetes variables
+    deployment_name: moonshot-deployment
+    service_name: moonshot-service
+    namespace: default
+    container_port: 8000
+    replicas: 2
+
+  tasks:
+    # Step 1: Ensure Docker is installed for building images
+    - name: Ensure Docker is installed
+      ansible.builtin.package:
+        name: docker.io
+        state: present
+
+    - name: Ensure Docker is running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    # Step 2: Build and push Docker image
+    - name: Copy application files to the target machine
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../docker"
+        dest: /tmp/moonshot
+        remote_src: no
+
+    - name: Build Docker image
+      ansible.builtin.command:
+        cmd: docker build -t "{{ docker_image_name }}" .
+        chdir: /tmp/moonshot
+
+    # Step 3: Kubernetes Deployment
+    - name: Create Kubernetes Deployment
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ deployment_name }}"
+            namespace: "{{ namespace }}"
+          spec:
+            replicas: "{{ replicas }}"
+            selector:
+              matchLabels:
+                app: moonshot
+            template:
+              metadata:
+                labels:
+                  app: moonshot
+              spec:
+                containers:
+                  - name: "{{ docker_container_name }}"
+                    image: "{{ docker_image_name }}"
+                    ports:
+                      - containerPort: "{{ container_port }}"
+
+    # Step 4: Kubernetes Service (LoadBalancer)
+    - name: Create Kubernetes Service
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ service_name }}"
+            namespace: "{{ namespace }}"
+          spec:
+            selector:
+              app: moonshot
+            type: LoadBalancer
+            ports:
+              - protocol: TCP
+                port: "{{ app_port }}"
+                targetPort: "{{ container_port }}"
+
+    # Step 5: Wait for External IP
+    - name: Wait for External IP to be assigned
+      ansible.builtin.command:
+        cmd: >
+          kubectl get service "{{ service_name }}" -n "{{ namespace }}"
+          -o=jsonpath='{.status.loadBalancer.ingress[0].ip}'
+      register: service_ip
+      retries: 10
+      delay: 15
+      until: service_ip.stdout != ""
+
+    # Step 6: Display the External IP
+    - name: Show External IP
+      ansible.builtin.debug:
+        msg: "Application is available at http://{{ service_ip.stdout }}:{{ app_port }}"

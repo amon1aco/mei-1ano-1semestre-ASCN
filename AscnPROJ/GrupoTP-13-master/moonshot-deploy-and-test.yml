@@ -1,0 +1,30 @@
+---
+# Playbook to deploy Moonshot Application
+- name: Deploy Moonshot Application on Kubernetes
+  hosts: localhost
+  gather_facts: false
+  become: true # Ensures root privileges where needed
+  environment:
+    KUBECONFIG: /home/vagrant/.kube/config # Define explicitamente o caminho do kubeconfig
+  roles:
+    # - role: docker
+    #   tags: ["docker"]
+
+    # - role: docker-moon
+    #   tags: ["moonshot"]
+
+    # - role: docker-postgres
+    #   tags: ["postgres"]
+
+    - role: k8s-postgres
+      tags: ["postgres-deploy"]
+
+    - role: k8s-moon
+      tags: ["moonshot-deploy"]
+
+    - role: benchmarking
+      tags: ["benchmarking"]
+
+
+  vars:
+    build: true # Set build to true here

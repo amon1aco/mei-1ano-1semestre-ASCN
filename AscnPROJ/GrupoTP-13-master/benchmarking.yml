@@ -1,0 +1,71 @@
+---
+- name: Install Java, setup JMeter, and run tests
+  hosts: localhost
+  become: true
+  tasks:
+    - name: Install Java if not already installed
+      ansible.builtin.yum:
+        name: java-11-openjdk
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Install Java on Debian/Ubuntu if not already installed
+      ansible.builtin.apt:
+        name: openjdk-11-jdk
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Create directory for JMeter
+      ansible.builtin.file:
+        path: /opt/apache-jmeter
+        state: directory
+        mode: '0755'
+
+    - name: Download Apache JMeter
+      ansible.builtin.get_url:
+        url: "https://downloads.apache.org//jmeter/binaries/apache-jmeter-5.6.3.tgz"
+        dest: /opt/apache-jmeter/apache-jmeter-5.6.3.tgz
+
+    - name: Extract Apache JMeter
+      ansible.builtin.unarchive:
+        src: /opt/apache-jmeter/apache-jmeter-5.6.3.tgz
+        dest: /opt/apache-jmeter/
+        remote_src: yes
+
+    - name: Add JMeter to PATH
+      ansible.builtin.lineinfile:
+        path: /etc/profile.d/jmeter.sh
+        line: "export PATH=/opt/apache-jmeter/apache-jmeter-5.6.3/bin:$PATH"
+        create: yes
+        mode: '0755'
+
+    - name: Source JMeter PATH
+      ansible.builtin.shell: source /etc/profile.d/jmeter.sh
+      args:
+        executable: /bin/bash
+
+    - name: Upload JMeter test plan
+      ansible.builtin.copy:
+        src: ./testetp1.jmx
+        dest: /opt/apache-jmeter/apache-jmeter-5.6.3/bin/test_plan.jmx
+
+    - name: Run JMeter test
+      ansible.builtin.command:
+      cmd: >
+        /opt/apache-jmeter/apache-jmeter-5.6.3/bin/jmeter -n
+        -t /opt/apache-jmeter/apache-jmeter-5.6.3/bin/test_plan.jmx
+        -l /opt/apache-jmeter/apache-jmeter-5.6.3/bin/results.jtl
+        -Japp_ip={{ app_ip }}
+        -Japp_port={{ app_port }}
+    register: jmeter_result
+
+
+    - name: Fetch JMeter results
+      ansible.builtin.fetch:
+        src: /opt/apache-jmeter/apache-jmeter-5.6.3/bin/results.jtl
+        dest: ./results.jtl
+        flat: yes
+
+    - name: Display JMeter results
+      ansible.builtin.debug:
+        msg: "{{ lookup('file', './results.jtl') }}"

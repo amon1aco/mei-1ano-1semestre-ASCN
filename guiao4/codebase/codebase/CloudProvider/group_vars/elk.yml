@@ -1,0 +1,19 @@
+monitor_ip: "{{ hostvars[groups['elk'][0]]['ansible_host'] }}"
+
+elk_network_name: "esnet"
+
+elk_server_name: "master"
+elasticsearch_image: "docker.elastic.co/elasticsearch/elasticsearch:8.15.3"
+elasticsearch_container_name: "es"
+elasticsearch_volume: "esdata"
+elasticsearch_port: 9200
+
+kibana_image: "docker.elastic.co/kibana/kibana:8.15.3"
+kibana_container_name: "ki"
+# kibana_password: "changeme"
+kibana_port: 5601
+
+metricbeat_image: "docker.elastic.co/beats/metricbeat:8.15.3"
+metricbeat_container_name: "metricbeat"
+
+run_option: "start"

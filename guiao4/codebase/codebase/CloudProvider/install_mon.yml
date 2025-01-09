@@ -1,0 +1,11 @@
+- name: Install and setup Elasticsearch and Kibana services
+  hosts: elk
+  roles:
+    - role: elk_es_ki_services
+      tags: ["elk"]
+
+- name: Install and setup Metricbeat service
+  hosts: k8s
+  roles:
+    - role: elk_metricbeat_service
+      tags: ["metricbeat"]

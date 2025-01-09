@@ -1,0 +1,2 @@
+# Variable that defines the Docker image for Swap
+swap_image: ascnuminho/swap:u24

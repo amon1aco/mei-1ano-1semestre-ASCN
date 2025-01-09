@@ -1,0 +1,68 @@
+vagrant@myvm:~/AppDeveloper/roles/docker-swap/tasks$ ls
+main.yml
+vagrant@myvm:~/AppDeveloper/roles/docker-swap/tasks$ cat main.yml
+---
+# Copiar Dockerfile e script.sh para o host remoto
+- name: Copy Dockerfile to remote host
+  ansible.builtin.copy:
+     src: ../files/Dockerfile
+     dest: /home/{{ ansible_user }}/Dockerfile
+     mode: preserve
+
+- name: Copy script.sh to remote host
+  ansible.builtin.copy:
+    src: ../files/script
+    dest: /home/{{ ansible_user }}/script
+    mode: preserve
+
+# Verify the copy operation
+- name: List contents of remote Swap directory
+  ansible.builtin.command: ls -la /home/{{ ansible_user }}
+  register: dir_contents
+  changed_when: false
+
+- name: Show directory contents
+  ansible.builtin.debug:
+    var: dir_contents.stdout_lines
+
+# Build the Swap image from Dockerfile if it doesn't exist locally
+- name: Build Docker image for Swap
+  community.docker.docker_image:
+    name: "{{ swap_image }}"
+    source: build
+    build:
+      path: /home/{{ ansible_user }}
+      pull : yes
+    force_source: yes
+
+# Check if the db container is running
+- name: Check if the container is running
+  ansible.builtin.shell:
+    cmd: docker ps | grep "{{ db_host }}"
+  register: result
+  changed_when: false
+  ignore_errors: true
+
+# Run the Swap container
+- name: Run Swap container
+  community.docker.docker_container:
+    name: "{{ swap_host }}"
+    image: "{{ swap_image }}"
+    state: started
+    ports:
+      - "8000:8000"
+    env:
+      DB_HOST: "{{ db_host }}"
+      DB_PORT: "{{ db_port }}"
+      DB_DATABASE: "{{ db_name }}"
+      DB_USERNAME: "{{ db_username }}"
+      DB_PASSWORD: "{{ db_password }}"
+    networks:
+      - name: "{{ db_network }}"
+    detach: true
+
+# Fail the playbook if the container is not running
+- name: Fail if the container is not running
+  ansible.builtin.fail:
+    msg: "Container {{ db_host }} is not running"
+  when: result.rc != 0

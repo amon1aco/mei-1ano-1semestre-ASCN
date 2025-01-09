@@ -1,0 +1,45 @@
+- name: Install ntpdate package
+  become: true
+  ansible.builtin.apt:
+    name: ntpdate
+    state: present
+    update_cache: true
+
+- name: Run ntpdate to sync time
+  become: true
+  ansible.builtin.command: ntpdate ntp.ubuntu.com
+
+- name: Block for adding Elasticsearch repository
+  block:
+    - name: Download Elasticsearch GPG key
+      become: true
+      ansible.builtin.get_url:
+        url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+        dest: /tmp/elasticsearch-key.gpg
+        mode: '0644'
+
+    - name: Add GPG key to keyring
+      become: true
+      ansible.builtin.command:
+        cmd: gpg --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg /tmp/elasticsearch-key.gpg
+        creates: /usr/share/keyrings/elasticsearch-keyring.gpg
+
+    - name: Install apt-transport-https package
+      ansible.builtin.apt:
+        name: apt-transport-https
+        state: present
+        update_cache: true
+      become: true
+
+    - name: Add Elasticsearch repository to sources list
+      ansible.builtin.lineinfile:
+        path: /etc/apt/sources.list.d/elastic-8.x.list
+        line: "deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main"
+        create: true
+        mode: '0644'
+      become: true
+
+    - name: Update APT cache
+      ansible.builtin.apt:
+        update_cache: true
+      become: true

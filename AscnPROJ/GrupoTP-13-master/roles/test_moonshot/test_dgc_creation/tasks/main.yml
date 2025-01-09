@@ -1,0 +1,85 @@
+---
+- name: Refresh inventory
+  ansible.builtin.meta: refresh_inventory
+
+- name: Task 0 - Check access to App (HTTP GET should return 200)
+  ansible.builtin.uri:
+    url: "http://{{ app_ip }}:{{ app_port }}/api/health"
+    method: GET
+    status_code: 200
+  register: result
+  until: result.status == 200
+  retries: 10
+  delay: 20
+  tags: ["test_dgc_creation"]
+
+- name: Task 1 - Login as a Notifier to create a DGC
+  ansible.builtin.uri:
+    url: "http://{{ app_ip }}:{{ app_port }}/api/auth/login/"
+    method: POST
+    body:
+      email: "{{ app_notifier_email }}"
+      password: "{{ app_notifier_password }}"
+    body_format: json
+    return_content: true
+    status_code: 200
+    headers:
+      Cache-Control: no-cache
+      Content-Type: "application/json; charset=UTF-8"
+    validate_certs: false
+  register: notifier_login
+  until: notifier_login.status == 200
+  retries: 6
+  delay: 10
+  tags: ["test_dgc_creation"]
+
+- name: Task 2 - Create a new Recovery DGC
+  ansible.builtin.uri:
+    url: "http://{{ app_ip }}:{{ app_port }}/api/recoveries/"
+    method: POST
+    body_format: json
+    return_content: true
+    body:
+      disease: "XN109"
+      first_positive_test_date: "2024-08-21"
+      country: "PT"
+      person_identification:
+        name: "Daniel Costa"
+        date_of_birth: "2000-08-21"
+        identifier: "123123123"
+        sex: "male"
+    status_code: 201
+    headers:
+      Cache-Control: no-cache
+      Content-Type: "application/json; charset=UTF-8"
+      Authorization: "Bearer {{ notifier_login.json.access }}"
+  register: created_dgc
+  until: created_dgc.status == 201
+  retries: 6
+  delay: 10
+  tags: ["test_dgc_creation"]
+
+- name: Task 3 - Get created Recovery DGC
+  ansible.builtin.uri:
+    url: "http://{{ app_ip }}:{{ app_port }}/api/certificates/{{ created_dgc.json.uvci }}"
+    method: GET
+    body_format: json
+    return_content: true
+    status_code: 200
+    headers:
+      Cache-Control: no-cache
+      Content-Type: "application/json; charset=UTF-8"
+      Authorization: "Bearer {{ notifier_login.json.access }}"
+  register: result
+  until: result.status == 200
+  retries: 6
+  delay: 10
+  tags: ["test_dgc_creation"]
+
+- name: Task 4 - Save DGC uvci for other tests
+  ansible.builtin.replace:
+    path: inventory/gcp.yml
+    after: "dgc_uvci:"
+    before: '\n'
+    regexp: "^(.*)$"
+    replace: " {{ created_dgc.json.uvci }}"

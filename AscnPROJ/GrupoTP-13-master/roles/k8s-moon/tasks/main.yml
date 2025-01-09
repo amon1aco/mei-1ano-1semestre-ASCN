@@ -1,0 +1,123 @@
+---
+- name: Create a secret for moonshot
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'moon-secret.yml') | from_yaml }}"
+    wait_timeout: 300
+  tags: moonshot
+
+- name: Create a service for exposing moonshot
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'service.yml') | from_yaml }}"
+    wait: true
+  tags: moonshot
+
+- name: Wait for the LoadBalancer Service to become available
+  kubernetes.core.k8s_info:
+    kind: Service
+    namespace: default
+    label_selectors:
+      - "app=moonshot"
+  register: moonshot_info
+  retries: 10
+  delay: 5
+  until: moonshot_info.resources[0].status.loadBalancer | length > 0
+
+- name: Set app_ip
+  set_fact:
+    app_ip: "{{ moonshot_info.resources[0].status.loadBalancer.ingress[0].ip }}"
+    app_port: "{{ moonshot_info.resources[0].spec.ports[0].port }}"
+
+- name: Replace app_ip on GCP
+  replace:
+    path: inventory/gcp.yml
+    regexp: 'app_ip: [^\n]+'
+    replace: "app_ip: {{ app_ip }}"
+
+- name: Replace app_port on GCP
+  replace:
+    path: inventory/gcp.yml
+    regexp: 'app_port: [^\n]+'
+    replace: "app_port: {{ app_port }}"
+
+- name: Create a Deployment for moonshot
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'moon-deployment.yml') | from_yaml }}"
+    wait: true
+    wait_timeout: 500
+  tags: moonshot
+
+- name: Wait till moonshot pod is created
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: default
+    label_selectors:
+      - app=moonshot
+    wait: true
+    wait_sleep: 5
+    wait_timeout: 180
+  register: moonshot_pod_info
+
+- name: Check if seed_database flag is true
+  debug:
+    msg: "Flag seed_database is set to true, running database seed"
+  when: seed_database | default(false)
+
+- name: Apply Django migrations
+  kubernetes.core.k8s_exec:
+    namespace: default
+    pod: "{{ moonshot_pod_info.resources[0].metadata.name }}"
+    command: python3 manage.py migrate
+  register: migration_result
+  retries: 5
+  delay: 5
+  until: migration_result.rc == 0
+  when: seed_database == "true"
+
+- name: Populate the Postgres database
+  kubernetes.core.k8s_exec:
+    namespace: default
+    pod: "{{ moonshot_pod_info.resources[0].metadata.name }}"
+    command: python3 seed.py
+  register: result_seed
+  retries: 5
+  delay: 5
+  until: result_seed.return_code == 0
+  when: seed_database == "true"
+
+
+- name: Ensure database seeding succeeded
+  ansible.builtin.fail:
+    msg: "Database seeding failed after multiple attempts."
+  when: result_seed is failed
+
+
+
+- name: Deploy the Moonshot hpa
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'moonshot-hpa.yml') | from_yaml }}"
+    wait: true
+    wait_timeout: 300 # 5 minutos
+  tags: ['hpa']
+
+- name: Wait for the HPA to stabilize and scale up pods
+  kubernetes.core.k8s_info:
+    kind: HorizontalPodAutoscaler
+    namespace: default
+    name: moonshot-hpa
+  register: hpa_status
+  retries: 10    # Número máximo de tentativas
+  delay: 10      # Atraso entre as tentativas
+  until: >
+    hpa_status.resources[0].status.desiredReplicas > 0
+  tags: ['hpa']  
+  # A condição de saída será alcançada quando o número desejado de réplicas for maior que zero
+
+#- name: Debug HPA status after stabilization
+#  debug:
+#    msg: "HPA status after stabilization: {{ hpa_status.resources[0].status }}"
+
+
